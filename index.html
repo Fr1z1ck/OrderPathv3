@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ru" class="light-theme">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OrderPath - Современный сборщик заказов</title>
+    <!-- Подключение шрифтов Google -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Подключение шрифтов и иконок -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Подключение SheetJS для работы с Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.0/xlsx.full.min.js"></script>
+    <!-- Подключение FileSaver для сохранения файлов -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- Подключение стилей -->
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#5c6bc0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body class="enhanced-visibility">
+    <!-- Шапка приложения -->
+    <header>
+        <div class="header-left">
+        <div class="logo-container">
+            <span class="app-logo"><i class="fas fa-boxes"></i> OrderPath</span>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button id="loadOrderBtn" class="primary-btn">
+                <i class="fas fa-upload"></i> 
+                <span class="btn-text">Загрузить</span>
+            </button>
+            <button id="manualRouteBtn" class="primary-btn">
+                <i class="fas fa-list-ol"></i>
+                <span class="btn-text">Ручной маршрут</span>
+            </button>
+            <button id="settingsBtn" class="primary-btn" aria-label="Настройки">
+                <i class="fas fa-cog"></i>
+                <span class="btn-text">Настройки</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Панель статистики -->
+    <div class="stats-panel slide-up" id="statsPanel">
+        <div class="stats-container">
+            <!-- Общий прогресс по заказу -->
+            <div class="stat-box">
+                <div class="progress-container">
+                    <div class="progress-bar" id="totalProgressBar"></div>
+                    <div class="stat-info">
+                        <span class="stat-label">Заказ</span>
+                        <span class="stat-value" id="totalCollectedCount">0/0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Прогресс по текущей категории -->
+            <div class="stat-box">
+                <div class="progress-container">
+                    <div class="progress-bar" id="categoryProgressBar"></div>
+                    <div class="stat-info">
+                        <span class="stat-label">Категория</span>
+                        <span class="stat-value" id="categoryCollectedCount">0/0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Основной контент - текущий товар -->
+    <div class="current-item-container slide-up" id="currentItem">
+        <div class="item-placeholder">
+            <div class="empty-state-icon">
+                <i class="fas fa-box-open"></i>
+            </div>
+            <p>Загрузите заказ, чтобы начать сборку</p>
+        </div>
+    </div>
+
+    <!-- Следующие позиции -->
+    <div class="next-items-container slide-up" id="nextItems">
+        <div class="section-header">
+            <h3>Следующие позиции</h3>
+        </div>
+        <div class="next-items-list"></div>
+    </div>
+
+
+    <!-- Навигационные кнопки -->
+    <div class="navigation-buttons">
+        <button id="prevItemBtn" class="nav-btn" disabled>
+            <i class="fas fa-chevron-left"></i>
+        </button>
+        <button id="collectBtn" class="collect-btn" disabled>
+            <i class="fas fa-check"></i> Собрано
+        </button>
+        <button id="nextItemBtn" class="nav-btn" disabled>
+            <i class="fas fa-chevron-right"></i>
+        </button>
+        <button id="editQuantityBtn" class="edit-btn" disabled>
+            <i class="fas fa-edit"></i> Изменить количество
+        </button>
+    </div>
+
+    <!-- Список всех товаров -->
+    <div class="all-items-container slide-up">
+        <div class="section-header">
+            <h2>Все товары в заказе</h2>
+        </div>
+        <div id="itemsList" class="items-list"></div>
+    </div>
+
+    <!-- Статус соединения -->
+    <div id="connectionStatus" class="connection-status online">
+        <i class="fas fa-wifi"></i>
+        <span id="connectionStatusText">Онлайн</span>
+    </div>
+
+    <!-- Модальное окно загрузки заказа -->
+    <div id="loadOrderModal" class="modal">
+        <div class="modal-content load-order-modal">
+            <div class="modal-header">
+                <h2><i class="fas fa-file-upload"></i> Загрузка заказов</h2>
+                <button id="closeModalIcon" class="close-modal-icon"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <!-- Прокручиваемое содержимое -->
+            <div class="modal-scrollable-content">
+                <!-- Секция загрузки файлов -->
+                <div class="upload-section">
+                    <div class="file-upload-container" id="dropZone">
+                        <div class="upload-icon">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                        </div>
+                        <div class="upload-text">
+                            <h3>Перетащите файлы сюда</h3>
+                            <p>или нажмите для выбора файлов</p>
+                            <span class="file-types">Поддерживаются: .xls, .xlsx</span>
+                        </div>
+                        <input type="file" id="fileInput" accept=".xls,.xlsx" multiple>
+                        <div class="upload-progress" id="uploadProgress" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill"></div>
+                            </div>
+                            <span class="progress-text" id="progressText">Загрузка...</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Секция загруженных заказов -->
+                <div class="orders-section">
+                    <div class="section-header">
+                        <h3><i class="fas fa-list"></i> Загруженные заказы</h3>
+                        <div class="orders-count" id="ordersCount">0 заказов</div>
+                    </div>
+                    
+                    <div class="orders-container">
+                        <div id="ordersList" class="orders-list">
+                            <!-- Заказы будут добавлены динамически -->
+                        </div>
+                        
+                        <!-- Пустое состояние -->
+                        <div class="empty-orders" id="emptyOrders">
+                            <div class="empty-icon">
+                                <i class="fas fa-inbox"></i>
+                            </div>
+                            <h4>Нет загруженных заказов</h4>
+                            <p>Загрузите файлы Excel с заказами для начала работы</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Нижняя панель с кнопками -->
+            <div class="modal-footer">
+                <div class="orders-actions">
+                    <button class="action-btn danger-btn" id="clearAllBtn" disabled>
+                        <i class="fas fa-trash"></i>
+                        <span>Удалить все</span>
+                    </button>
+                    <button class="action-btn primary-btn" id="startWorkBtn" disabled>
+                        <i class="fas fa-play"></i>
+                        <span>Начать работу</span>
+                    </button>
+            </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для изменения количества -->
+    <div id="quantityModal" class="modal">
+        <div class="modal-content quantity-modal">
+            <div class="modal-header">
+                <h2><i class="fas fa-edit"></i> Изменить количество</h2>
+                <button id="cancelQuantityIconBtn" class="close-modal-icon"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="quantity-container">
+                <div class="item-name-preview" id="quantityItemName">Название товара</div>
+                <div class="quantity-display">
+                    <input type="text" id="newQuantity" readonly>
+                </div>
+            </div>
+            <div class="number-pad">
+                <div class="number-row">
+                    <button class="number-btn" data-number="1">1</button>
+                    <button class="number-btn" data-number="2">2</button>
+                    <button class="number-btn" data-number="3">3</button>
+                </div>
+                <div class="number-row">
+                    <button class="number-btn" data-number="4">4</button>
+                    <button class="number-btn" data-number="5">5</button>
+                    <button class="number-btn" data-number="6">6</button>
+                </div>
+                <div class="number-row">
+                    <button class="number-btn" data-number="7">7</button>
+                    <button class="number-btn" data-number="8">8</button>
+                    <button class="number-btn" data-number="9">9</button>
+                </div>
+                <div class="number-row">
+                    <button class="number-btn clear-btn" data-action="clear">C</button>
+                    <button class="number-btn" data-number="0">0</button>
+                    <button class="number-btn backspace-btn" data-action="backspace"><i class="fas fa-backspace"></i></button>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button id="confirmQuantityBtn" class="primary-btn"><i class="fas fa-check"></i> Подтвердить</button>
+                <button id="cancelQuantityBtn" class="secondary-btn"><i class="fas fa-times"></i> Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно настроек -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content settings-modal">
+            <div class="modal-header">
+                <h2><i class="fas fa-cog"></i> Настройки</h2>
+                <button id="closeSettingsIcon" class="close-modal-icon"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="settings-content">
+                <div class="settings-section">
+                    <h3><i class="fas fa-palette"></i> Внешний вид</h3>
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <span class="setting-label">Тема оформления</span>
+                            <span class="setting-description">Выберите светлую или темную тему</span>
+                        </div>
+                        <button id="themeToggleBtn" class="theme-toggle-btn">
+                            <i class="fas fa-moon"></i>
+                            <span class="theme-text">Темная тема</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3><i class="fas fa-info-circle"></i> О приложении</h3>
+                    <div class="app-info">
+                        <div class="info-item">
+                            <span class="info-label">Версия:</span>
+                            <span class="info-value">1.0.0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Разработчик:</span>
+                            <span class="info-value">OrderPath Team</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для информации о заказе -->
+    <div id="orderInfoModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-info-circle"></i> Информация о заказе</h2>
+                <button id="closeInfoIconBtn" class="close-modal-icon"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="orderDetails" class="order-details"></div>
+            <div class="modal-buttons">
+                <button id="closeInfoModalBtn" class="secondary-btn"><i class="fas fa-times"></i> Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно ручного маршрута -->
+    <div id="manualRouteModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-list-ol"></i> Ручной маршрут</h2>
+                <button id="closeManualRouteIcon" class="close-modal-icon"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="manual-route-content">
+                <div id="manualRouteCategoryList" class="manual-route-list">
+                    <!-- Список категорий для ручного маршрута -->
+                </div>
+                <div class="modal-buttons">
+                    <button id="resetManualRouteBtn" class="secondary-btn"><i class="fas fa-undo"></i> Сбросить порядок</button>
+                    <button id="saveManualRouteBtn" class="primary-btn"><i class="fas fa-check"></i> Сохранить маршрут</button>
+                    <button id="cancelManualRouteBtn" class="secondary-btn"><i class="fas fa-times"></i> Отмена</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Всплывающие уведомления -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Подключение скриптов -->
+    <script src="js/app.js"></script>
+</body>
+</html> 
